@@ -80,7 +80,13 @@ celerybeat-schedule
 
 # virtualenv
 venv/
+.env/
+.2env/
+.3env/
 ENV/
+
+# vagrant
+.vagrant/
 
 # Spyder project settings
 .spyderproject
