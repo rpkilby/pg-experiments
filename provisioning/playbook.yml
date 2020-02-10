@@ -1,0 +1,98 @@
+---
+- name: Setup PostgreSQL server
+  hosts: postgres
+  become_user: root
+  become: yes
+
+  vars:
+    postgresql_service: "postgresql-12"
+    postgresql_bin_path: "/usr/pgsql-12/bin"
+    postgresql_data_dir: "/var/lib/pgsql/12/data"
+
+  tasks:
+    - name: Disable PostgreSQL appstream
+      command:
+        cmd: yum -qy module disable postgresql
+        warn: false  # yum module does not currently support disabling modules.
+
+    - name: Add PostgreSQL 12 Repository
+      yum:
+        name: https://download.postgresql.org/pub/repos/yum/reporpms/EL-8-x86_64/pgdg-redhat-repo-latest.noarch.rpm
+        state: present
+
+    - name: Install PostgreSQL Packages
+      yum:
+        name:
+          - epel-release
+          - postgresql12
+          - postgresql12-server
+          - postgresql12-contrib
+          - postgresql12-devel
+          - python3-psycopg2
+        state: latest
+
+    - name: Install Postgis Packages
+      yum:
+        name:
+          - postgis25_12
+          - postgis25_12-devel
+          - postgis25_12-utils
+        enablerepo: PowerTools
+        state: latest
+
+    - name: Check if PostgreSQL database is initialized.
+      stat:
+        path: "{{ postgresql_data_dir }}/PG_VERSION"
+      register: pgdata_dir_version
+
+    - name: Ensure PostgreSQL database is initialized.
+      command: "{{ postgresql_bin_path }}/initdb -D {{ postgresql_data_dir }}"
+      become_user: "postgres"
+      when: not pgdata_dir_version.stat.exists
+
+    - name: Ensure PostgreSQL service is running
+      systemd: name={{postgresql_service}} state=started enabled=yes
+
+
+- name: Setup PostgreSQL database
+  hosts: postgres
+  become_user: postgres
+  become: yes
+
+  vars:
+    dbname: pg-experiments
+    dbuser: vagrant
+    postgresql_service: "postgresql-12"
+    postgresql_bin_path: "/usr/pgsql-12/bin"
+    postgresql_data_dir: "/var/lib/pgsql/12/data"
+
+  tasks:
+    - name: Create PostgreSQL user
+      postgresql_user: name={{dbuser}}
+
+    - name: Create PostgreSQL database
+      postgresql_db: name={{dbname}} owner={{dbuser}}
+
+    - name: Add citext extension
+      postgresql_ext: name=citext db={{dbname}}
+
+    - name: Add postgis extension
+      postgresql_ext: name=postgis db={{dbname}}
+
+    - name: Setup authentication
+      postgresql_pg_hba:
+        dest: "{{ postgresql_data_dir }}/pg_hba.conf"
+        contype: host
+        address: samenet
+        method: trust
+        users: "{{dbuser}}"
+        databases: "{{dbname}}"
+
+    - name: Ensure PostgreSQL server is listening
+      postgresql_set: name=listen_addresses value=*
+
+    - name: Restart PostgreSQL server
+      systemd:
+        name: "{{postgresql_service}}"
+        state: restarted
+      become_user: root
