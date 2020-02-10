@@ -1,2 +1,9 @@
+# Application
 Django
 psycopg2
+
+# Develop
+ipython
+
+# Deploy
+ansible
